@@ -15,6 +15,7 @@ NetScope is a packet capture and network analysis tool. It runs in the backgroun
 
 1. **Install requirements:**
 Make sure you have Python installed. The project uses `uv` for dependency management.
+*(Windows Only)*: You **must** install [Npcap](https://npcap.com/#download) to allow Python to capture network packets.
 
 2. **Start the tool:**
 Just double-click the `start_hidden.vbs` file. It will ask for Administrator permissions because packet sniffing requires deep network access. Click "Yes". It will run silently in the background, so you won't see a terminal window.
