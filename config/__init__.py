@@ -1,0 +1,1 @@
+# Config package — game presets

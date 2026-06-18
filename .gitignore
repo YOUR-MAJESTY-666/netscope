@@ -1,0 +1,50 @@
+# ──────────────── Python ────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.manifest
+*.spec
+
+# ──────────────── Virtual Environments ────────────────
+venv/
+env/
+.venv/
+.env/
+
+# ──────────────── SQLite databases (session data) ────────────────
+*.db
+*.sqlite
+*.sqlite3
+
+# ──────────────── IDE / Editor ────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# ──────────────── OS junk ────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ──────────────── Byte-compiled / optimised ────────────────
+*.pyc
+*.pyo
+
+# ──────────────── Logs & temp ────────────────
+*.log
+tmp/
+temp/
+
+# ──────────────── Misc ────────────────
+.env
+*.bak

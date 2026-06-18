@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="NetScope - Real-time network packet capture and analysis dashboard.">
+  <title>NetScope - Network Analyzer</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- External CSS (served by Flask) -->
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <!-- INLINE CRITICAL CSS - guarantees dark theme even without Flask -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --border: #30363d;
+      --text: #e6edf3; --text-sec: #8b949e;
+      --green: #3fb950; --yellow: #d29922; --red: #f85149;
+      --blue: #58a6ff; --purple: #bc8cff; --indigo: #6366f1; --orange: #f0883e;
+      --radius: 12px; --radius-sm: 8px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.3); --shadow-lg: 0 8px 24px rgba(0,0,0,0.4);
+      --transition: 0.2s ease;
+      --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    }
+
+    body {
+      background-color: var(--bg); color: var(--text); font-family: var(--font);
+      font-size: 14px; line-height: 1.5; min-height: 100vh; padding-bottom: 60px;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Navbar ── */
+    #navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100; height: 54px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 28px;
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      background: rgba(13, 17, 23, 0.88);
+    }
+    .nav-left, .nav-right { display: flex; align-items: center; gap: 14px; }
+    .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+    .logo-icon {
+      font-size: 20px;
+      background: linear-gradient(135deg, var(--indigo), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .logo-text {
+      background: linear-gradient(135deg, var(--blue), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .version-badge {
+      font-size: 10px; color: var(--text-sec); padding: 2px 7px;
+      border: 1px solid var(--border); border-radius: 5px; font-weight: 500;
+    }
+
+    /* ── Badge ── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; letter-spacing: 0.8px;
+    }
+    .badge-ok {
+      background: rgba(63,185,80,0.12); color: var(--green);
+      border: 1px solid rgba(63,185,80,0.25); animation: pulse-g 2.5s ease-in-out infinite;
+    }
+    .badge-error {
+      background: rgba(248,81,73,0.12); color: var(--red);
+      border: 1px solid rgba(248,81,73,0.25); animation: pulse-r 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse-g {
+      0%,100% { box-shadow: 0 0 0 0 rgba(63,185,80,0.25); }
+      50%     { box-shadow: 0 0 0 8px rgba(63,185,80,0); }
+    }
+    @keyframes pulse-r {
+      0%,100% { box-shadow: 0 0 0 0 rgba(248,81,73,0.25); }
+      50%     { box-shadow: 0 0 0 8px rgba(248,81,73,0); }
+    }
+    .session-label { color: var(--text-sec); font-size: 12px; font-family: var(--font-mono); }
+    .uptime {
+      color: var(--blue); font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+      background: rgba(88,166,255,0.08); padding: 4px 10px; border-radius: 6px;
+      border: 1px solid rgba(88,166,255,0.15);
+    }
+
+    /* ── Connection Strip ── */
+    #connection-strip {
+      margin-top: 54px; padding: 10px 28px; background: var(--surface);
+      border-bottom: 1px solid var(--border); display: flex; align-items: center;
+      gap: 24px; flex-wrap: wrap;
+    }
+    .conn-item { display: flex; align-items: center; gap: 8px; }
+    .conn-label {
+      color: var(--text-sec); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.8px; font-weight: 500;
+    }
+    .conn-value {
+      color: var(--text); font-size: 12px; font-family: var(--font-mono); font-weight: 600;
+    }
+    .conn-alerts { color: var(--green); }
+    .conn-sep { width: 1px; height: 16px; background: var(--border); }
+
+    /* ── Stats Row ── */
+    #stats-row {
+      margin-top: 16px; padding: 0 28px;
+      display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+    }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 16px 16px; text-align: center; position: relative; overflow: hidden;
+      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+    }
+    .stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; opacity: 0.8;
+    }
+    .accent-blue::before   { background: linear-gradient(90deg, #58a6ff, #6366f1); }
+    .accent-amber::before  { background: linear-gradient(90deg, #d29922, #f0883e); }
+    .accent-red::before    { background: linear-gradient(90deg, #f85149, #f0883e); }
+    .accent-green::before  { background: linear-gradient(90deg, #3fb950, #58a6ff); }
+    .accent-purple::before { background: linear-gradient(90deg, #bc8cff, #6366f1); }
+    .stat-card:hover {
+      transform: translateY(-3px); box-shadow: var(--shadow-lg);
+      border-color: rgba(88,166,255,0.3);
+    }
+    .card-label {
+      color: var(--text-sec); font-size: 11px; text-transform: uppercase;
+      letter-spacing: 1.2px; margin-bottom: 10px; font-weight: 500;
+    }
+    .card-value {
+      font-size: 2rem; font-weight: 700; font-family: var(--font-mono);
+      color: var(--text); line-height: 1.1; transition: color 0.3s ease;
+    }
+    .card-unit { color: var(--text-sec); font-size: 11px; margin-top: 6px; }
+
+    /* ── Charts Grid ── */
+    #charts-grid {
+      padding: 14px 28px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    }
+    .chart-box {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 18px 20px; transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .chart-box:hover {
+      border-color: rgba(88,166,255,0.2); box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+    .full-width { grid-column: 1 / -1; }
+    .chart-header {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+    }
+    .chart-title {
+      color: var(--text-sec); font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .chart-subtitle {
+      color: var(--text-sec); font-size: 11px; font-family: var(--font-mono); opacity: 0.7;
+    }
+    .chart-container { position: relative; height: 220px; }
+    .chart-container-sm { height: 200px; }
+
+    /* ── Alerts Section ── */
+    #alerts-section {
+      margin: 14px 28px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--surface2);
+    }
+    .section-title {
+      display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px;
+    }
+    .section-icon-svg { color: var(--text-sec); flex-shrink: 0; }
+    .alert-badge {
+      background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 10px; min-width: 20px; text-align: center;
+      font-family: var(--font-mono);
+    }
+    .alert-badge.hidden { display: none; }
+    .btn-clear {
+      background: rgba(248,81,73,0.08); color: var(--red);
+      border: 1px solid rgba(248,81,73,0.2); padding: 5px 14px; border-radius: 6px;
+      font-size: 11px; font-weight: 600; cursor: pointer; transition: all var(--transition);
+      font-family: var(--font);
+    }
+    .btn-clear:hover { background: rgba(248,81,73,0.2); border-color: var(--red); }
+    .table-wrapper { overflow-x: auto; }
+    #alerts-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    #alerts-table thead th {
+      background: var(--surface2); color: var(--text-sec); font-weight: 600;
+      text-transform: uppercase; font-size: 10px; letter-spacing: 0.8px;
+      padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    #alerts-table tbody tr {
+      border-bottom: 1px solid rgba(48,54,61,0.5); transition: background var(--transition);
+    }
+    #alerts-table tbody tr:hover { background: rgba(88,166,255,0.04); }
+    #alerts-table tbody tr:nth-child(even) { background: rgba(33,38,45,0.3); }
+    #alerts-table tbody tr:nth-child(even):hover { background: rgba(88,166,255,0.06); }
+    #alerts-table td { padding: 9px 16px; color: var(--text); }
+    #alerts-table td code {
+      background: rgba(33,38,45,0.6); padding: 2px 8px; border-radius: 4px;
+      font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border);
+    }
+    .empty-row td {
+      text-align: center; color: var(--text-sec); padding: 40px !important;
+      font-style: italic; font-size: 13px;
+    }
+    .severity-high   { color: var(--red) !important; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .severity-medium { color: var(--yellow) !important; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+    .severity-low    { color: var(--blue) !important; font-weight: 500; font-size: 11px; text-transform: uppercase; }
+
+    @keyframes alert-flash {
+      0%   { background: rgba(248,81,73,0.12); }
+      100% { background: transparent; }
+    }
+    .alert-new { animation: alert-flash 1.2s ease-out; }
+
+    /* ── Footer ── */
+    #footer {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 36px;
+      background: rgba(13,17,23,0.92); backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px); border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 11px; color: var(--text-sec);
+    }
+    .footer-sep { color: var(--border); }
+
+    /* ── Responsive ── */
+    @media (max-width: 1200px) { #stats-row { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 768px) {
+      #stats-row { grid-template-columns: repeat(2, 1fr); padding: 0 14px; }
+      #charts-grid { grid-template-columns: 1fr; padding: 12px 14px; }
+      .full-width { grid-column: 1; }
+      #alerts-section { margin: 12px 14px; }
+      #navbar { padding: 0 14px; }
+      #connection-strip { padding: 8px 14px; }
+      .nav-right { display: none; }
+      .card-value { font-size: 1.5rem; }
+    }
+    @media (max-width: 480px) { #stats-row { grid-template-columns: 1fr; } }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border); }
+    ::selection { background: rgba(99,102,241,0.3); color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav id="navbar">
+    <div class="nav-left">
+      <span class="logo">
+        <!-- icon removed -->
+        <span class="logo-text">NetScope</span>
+        <span class="version-badge">v2.0</span>
+      </span>
+      <span id="status-badge" class="badge badge-ok">LIVE</span>
+    </div>
+    <div class="nav-right">
+      <button id="btn-stop-capture" class="btn-stop hidden" onclick="stopCapture()">Stop Capture</button>
+      <span id="session-label" class="session-label"></span>
+      <span id="uptime" class="uptime">00:00:00</span>
+    </div>
+  </nav>
+
+  <!-- CONNECTION STRIP -->
+  <div id="connection-strip">
+    <div class="conn-item">
+      <span class="conn-label">Target</span>
+      <span class="conn-value" id="conn-target">-</span>
+    </div>
+    <div class="conn-sep"></div>
+    <div class="conn-item">
+      <span class="conn-label">Protocol</span>
+      <span class="conn-value" id="conn-proto">-</span>
+    </div>
+    <div class="conn-sep"></div>
+    <div class="conn-item">
+      <span class="conn-label">Interface</span>
+      <span class="conn-value" id="conn-iface">auto</span>
+    </div>
+    <div class="conn-sep"></div>
+    <div class="conn-item">
+      <span class="conn-label">Alerts</span>
+      <span class="conn-value conn-alerts" id="conn-alerts">0</span>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div id="stats-row">
+    <div class="stat-card accent-blue" id="card-rtt">
+      <div class="card-label">RTT (mean)</div>
+      <div class="card-value" id="val-rtt">-</div>
+      <div class="card-unit">ms</div>
+    </div>
+    <div class="stat-card accent-amber" id="card-jitter">
+      <div class="card-label">Jitter (σ)</div>
+      <div class="card-value" id="val-jitter">-</div>
+      <div class="card-unit">ms</div>
+    </div>
+    <div class="stat-card accent-red" id="card-loss">
+      <div class="card-label">Packet Loss</div>
+      <div class="card-value" id="val-loss">-</div>
+      <div class="card-unit">%</div>
+    </div>
+    <div class="stat-card accent-green" id="card-p95">
+      <div class="card-label">p95 Latency</div>
+      <div class="card-value" id="val-p95">-</div>
+      <div class="card-unit">ms</div>
+    </div>
+    <div class="stat-card accent-purple" id="card-pkts">
+      <div class="card-label">Packets</div>
+      <div class="card-value" id="val-pkts">0</div>
+      <div class="card-unit">captured</div>
+    </div>
+  </div>
+
+  <!-- CHARTS -->
+  <div id="charts-grid">
+    <div class="chart-box full-width" id="box-rtt-line">
+      <div class="chart-header">
+        <div class="chart-title">RTT over time</div>
+        <div class="chart-subtitle" id="rtt-subtitle">-</div>
+      </div>
+      <div class="chart-container">
+        <canvas id="chart-rtt-line"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-box half-width" id="box-proto-pie">
+      <div class="chart-header">
+        <div class="chart-title">Protocol distribution</div>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="chart-proto-pie"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-box half-width" id="box-talkers">
+      <div class="chart-header">
+        <div class="chart-title">Top talkers (bytes)</div>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="chart-talkers-bar"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-box half-width" id="box-bandwidth">
+      <div class="chart-header">
+        <div class="chart-title">Bandwidth</div>
+        <div class="chart-subtitle">kB/s in / out</div>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="chart-bandwidth"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-box half-width" id="box-rtt-hist">
+      <div class="chart-header">
+        <div class="chart-title">RTT distribution</div>
+      </div>
+      <div class="chart-container chart-container-sm">
+        <canvas id="chart-rtt-hist"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECURITY ALERTS -->
+  <div id="alerts-section">
+    <div class="section-header">
+      <div class="section-title">
+        <svg class="section-icon-svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+          <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm9.78-2.22-5.5 5.5a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l5.5-5.5a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042Z"/>
+        </svg>
+        <span>Security Alerts</span>
+        <span id="alert-badge" class="alert-badge hidden">0</span>
+      </div>
+      <button id="btn-clear-alerts" class="btn-clear" onclick="clearAlerts()">Clear All</button>
+    </div>
+    <div class="table-wrapper">
+      <table id="alerts-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Type</th>
+            <th>Severity</th>
+            <th>Description</th>
+            <th>Source IP</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-tbody">
+          <tr class="empty-row"><td colspan="5">No alerts - monitoring in progress</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer id="footer">
+    <span>NetScope v2.0</span>
+    <span class="footer-sep">|</span>
+    <span>Passive capture powered by Scapy</span>
+    <span class="footer-sep">|</span>
+    <span id="footer-session"></span>
+  </footer>
+
+  <!-- CONTROL PANEL MODAL -->
+  <div id="control-panel-modal" class="modal-overlay">
+    <div class="modal-content">
+      <h2>Configure Capture</h2>
+      
+      <div class="form-group">
+        <label>Mode</label>
+        <div class="mode-toggle">
+          <label><input type="radio" name="mode" value="specific" checked onchange="toggleMode()"> Specific Target</label>
+          <label><input type="radio" name="mode" value="general" onchange="toggleMode()"> General Network</label>
+        </div>
+      </div>
+
+      <div class="form-group" id="fg-preset">
+        <label>Game / Preset</label>
+        <select id="sel-preset" onchange="applyPreset()">
+          <option value="">Custom...</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="fg-target">
+        <label>Target IP</label>
+        <input type="text" id="inp-target" placeholder="e.g. 8.8.8.8">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group half">
+          <label>Port</label>
+          <input type="number" id="inp-port" placeholder="Any">
+        </div>
+        <div class="form-group half">
+          <label>Protocol</label>
+          <select id="sel-protocol">
+            <option value="all">All</option>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Label</label>
+        <input type="text" id="inp-label" placeholder="My Session">
+      </div>
+
+      <button id="btn-start-capture" class="btn-start" onclick="startCapture()">Start Capture</button>
+    </div>
+  </div>
+
+  <!-- SCRIPTS -->
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/alerts.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
